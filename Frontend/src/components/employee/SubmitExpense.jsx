@@ -103,7 +103,8 @@ export default function SubmitExpense({ onNavigate }) {
         currency: form.currency,
         category: form.category,
         description: form.description,
-        date: form.date,
+        expenseDate: form.date,
+        vendor: form.description,
         receiptText: form.receiptText || ocrResult?.raw_text || '',
       });
       toast.success('Expense submitted for approval!');

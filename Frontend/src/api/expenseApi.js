@@ -12,13 +12,13 @@ export const authApi = {
 
 export const expenseApi = {
   create: (data) => mainApi.post('/expenses', data),
-  getMyExpenses: () => mainApi.get('/expenses/my'),
+  getMyExpenses: () => mainApi.get('/expenses'),
 };
 
 export const approvalApi = {
   getRules: () => mainApi.get('/approvals/rules'),
   setRules: (data) => mainApi.put('/approvals/rules', data),
-  getPending: () => mainApi.get('/approvals/pending'),
+  getPending: () => mainApi.get('/approvals'),
   decide: (expenseId, decision, comments) =>
-    mainApi.post(`/approvals/${expenseId}/decision`, { decision, comments }),
+    mainApi.post(`/approvals/${expenseId}/approve`, { decision, comments }),
 };

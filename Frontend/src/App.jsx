@@ -22,15 +22,12 @@ function AppContent() {
 
   if (!user) return <LoginPage />;
 
-  const role = activeRole || user.role || 'employee';
-
-  const renderPage = () => {
-    switch (role) {
-      case 'manager': return <ManagerPage activeRole={role} />;
-      case 'admin': return <AdminPage activeRole={role} />;
-      default: return <EmployeePage activeRole={role} />;
-    }
-  };
+  const role = (activeRole || user.role || 'EMPLOYEE').toUpperCase();
+  switch (role) {
+    case 'MANAGER': return <ManagerPage activeRole={role} />;
+    case 'ADMIN': return <AdminPage activeRole={role} />;
+    default: return <EmployeePage activeRole={role} />;
+  }
 
   return (
     <>
