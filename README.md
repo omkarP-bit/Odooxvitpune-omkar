@@ -1,40 +1,31 @@
 # Reimbursement Management Backend
 
-## Current Implementation Scope
+Node.js and PostgreSQL backend for multi-company reimbursement workflows with role-based access, dynamic approval sequencing, and currency normalization.
 
-Implemented in this repo:
+## Current Highlights
 
-- Company-first onboarding (`company-signup`) with auto admin creation
-- Country-to-currency resolution during company onboarding
-- JWT-based auth and role-based access control
-- Admin-managed users (manager/employee/finance/director/cfo)
-- Manager assignment for employees
-- Expense submission by employees
-- Duplicate expense detection
-- Currency normalization into company default currency
-- OCR parser stub from raw receipt text
-- Multi-step approvals with sequence enforcement
-- Configurable approval rules (manager approver + additional roles + conditional rules)
-- SLA due-time generation per approval step
-
-Not fully implemented yet:
-
-- Full OAuth provider integration (Google auth flow)
-- Real OCR engine integration (currently parser stub)
-- Notification module (email/push)
-- Advanced reporting dashboards
+- Company-first onboarding with admin auto-creation
+- JWT auth and role-based access control
+- Company-scoped user management and manager mapping
+- Expense submission with duplicate detection and currency conversion
+- OCR text parsing stub for receipt extraction
+- Explicit approval sequencing with role slots per step
+- Hybrid per-step decision logic (all, percentage, specific, hybrid)
+- SLA hours per approval step
+- CORS enabled for local frontend testing
 
 ## Tech Stack
 
 - Node.js + Express
-- PostgreSQL (`pg`)
-- JWT (`jsonwebtoken`)
-- Password hashing (`bcryptjs`)
-- UUID public IDs (`uuid`)
+- PostgreSQL via pg
+- JWT via jsonwebtoken
+- Password hashing via bcryptjs
+- UUID public IDs via uuid
+- CORS middleware via cors
 
-## Project Structure
+## Repository Structure
 
-```
+```text
 backend/
   server.js
   package.json
@@ -65,18 +56,16 @@ backend/
       ocr.js
 ```
 
-## Setup
+## Environment Setup
 
-### 1. Install Dependencies
+1. Install dependencies
 
 ```bash
 cd backend
 npm install
 ```
 
-### 2. Configure Environment Variables
-
-Create/update `backend/.env`:
+2. Configure backend environment in backend/.env
 
 ```env
 PORT=5000
@@ -86,6 +75,7 @@ DB_USER=postgres
 DB_PASSWORD=admin
 DB_NAME=postgres
 JWT_SECRET=change_this_secret
+FRONTEND_ORIGIN=http://localhost:5173
 ADMIN_NAME=System Admin
 ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=admin123
@@ -93,48 +83,43 @@ ADMIN_COMPANY_NAME=Default Company
 ADMIN_COUNTRY=India
 ```
 
-### 3. Run Server
+3. Run backend
 
 ```bash
 cd backend
 npm run start
 ```
 
-For development:
+Development mode
 
 ```bash
 cd backend
 npm run dev
 ```
 
-## Base URL
+## CORS
 
-`http://localhost:5000`
+Backend allows browser requests from the origin in FRONTEND_ORIGIN. Default is http://localhost:5173.
 
-## Authentication
+## API Base URL
 
-Use header for protected routes:
+http://localhost:5000
 
-`Authorization: Bearer <JWT_TOKEN>`
+## Auth Header
+
+Authorization: Bearer <JWT_TOKEN>
 
 ## API Endpoints
 
 ### Health
 
-#### GET /
-
-- Purpose: Health check
-- Auth: No
-
----
+- GET /
 
 ### Auth Module
 
-#### POST /api/auth/company-signup
+- POST /api/auth/company-signup
 
-- Purpose: Create a new company and its first admin user
-- Auth: No
-- Body:
+Request body:
 
 ```json
 {
@@ -146,11 +131,9 @@ Use header for protected routes:
 }
 ```
 
-#### POST /api/auth/login
+- POST /api/auth/login
 
-- Purpose: Login user
-- Auth: No
-- Body:
+Request body:
 
 ```json
 {
@@ -159,21 +142,12 @@ Use header for protected routes:
 }
 ```
 
-#### GET /api/auth/me
+- GET /api/auth/me (auth required)
+- GET /api/auth/users (admin only)
 
-- Purpose: Get current logged-in user profile
-- Auth: Yes
+- POST /api/auth/users (admin only)
 
-#### GET /api/auth/users
-
-- Purpose: List company users
-- Auth: Yes (admin only)
-
-#### POST /api/auth/users
-
-- Purpose: Admin creates users in own company
-- Auth: Yes (admin only)
-- Body:
+Request body:
 
 ```json
 {
@@ -185,19 +159,9 @@ Use header for protected routes:
 }
 ```
 
-Allowed roles to create:
+Creatable roles: manager, employee, finance, director, cfo
 
-- `manager`
-- `employee`
-- `finance`
-- `director`
-- `cfo`
-
-#### PATCH /api/auth/users/:userId/role
-
-- Purpose: Admin changes role of a company user
-- Auth: Yes (admin only)
-- Body:
+- PATCH /api/auth/users/:userId/role (admin only)
 
 ```json
 {
@@ -205,11 +169,7 @@ Allowed roles to create:
 }
 ```
 
-#### PATCH /api/auth/users/:userId/manager
-
-- Purpose: Admin assigns manager to user
-- Auth: Yes (admin only)
-- Body:
+- PATCH /api/auth/users/:userId/manager (admin only)
 
 ```json
 {
@@ -217,22 +177,18 @@ Allowed roles to create:
 }
 ```
 
----
-
 ### Expense Module
 
-#### POST /api/expenses
+- POST /api/expenses (employee only)
 
-- Purpose: Employee submits an expense
-- Auth: Yes (`employee` only)
-- Body:
+Request body:
 
 ```json
 {
   "amount": 100,
   "currency": "USD",
-  "category": "Food",
-  "description": "Team lunch",
+  "category": "Travel",
+  "description": "Cab",
   "date": "2026-03-29",
   "receiptText": "Restaurant ABC\nTotal: 100"
 }
@@ -240,25 +196,47 @@ Allowed roles to create:
 
 Behavior:
 
-- Parses receipt text (OCR stub)
-- Detects possible duplicates (same employee + amount + currency + date + category)
-- Converts amount to company currency
-- Generates approval workflow steps automatically
+- OCR parser runs on receiptText
+- Duplicate detection checks key fields
+- Amount is normalized into company currency
+- Approval workflow steps are generated from configured rule
 
-#### GET /api/expenses/my
-
-- Purpose: List requesting user's expenses
-- Auth: Yes (`employee`, `manager`, `admin`, `finance`, `director`, `cfo`)
-
----
+- GET /api/expenses/my (employee, manager, admin, finance, director, cfo)
 
 ### Approval Module
 
-#### PUT /api/approvals/rules
+- PUT /api/approvals/rules (admin only)
 
-- Purpose: Configure approval rules for a company
-- Auth: Yes (admin only)
-- Body:
+Preferred explicit step payload:
+
+```json
+{
+  "steps": [
+    {
+      "sequenceNo": 1,
+      "roleSlots": ["manager"],
+      "conditionType": "all",
+      "slaHours": 24
+    },
+    {
+      "sequenceNo": 2,
+      "roleSlots": ["finance"],
+      "conditionType": "all",
+      "slaHours": 24
+    },
+    {
+      "sequenceNo": 3,
+      "roleSlots": ["director"],
+      "conditionType": "hybrid",
+      "percentageThreshold": 60,
+      "specificApproverRole": "cfo",
+      "slaHours": 24
+    }
+  ]
+}
+```
+
+Legacy payload is still supported and auto-converted to steps:
 
 ```json
 {
@@ -269,23 +247,16 @@ Behavior:
 }
 ```
 
-Rule options:
+Condition types per step:
 
-- Manager first approver toggle
-- Additional role-based approvers
-- Percentage threshold approval (e.g., 60%)
-- Specific approver role can auto-satisfy approval condition
+- all: every approver in the step must approve
+- percentage: step approved when threshold is met
+- specific: step approved when specific role approves
+- hybrid: percentage OR specific role approval
 
-#### GET /api/approvals/pending
+- GET /api/approvals/pending (manager, admin, finance, director, cfo)
 
-- Purpose: List pending approvals for approver
-- Auth: Yes (`manager`, `admin`, `finance`, `director`, `cfo`)
-
-#### POST /api/approvals/:expenseId/decision
-
-- Purpose: Approve or reject assigned expense step
-- Auth: Yes (`manager`, `admin`, `finance`, `director`, `cfo`)
-- Body:
+- POST /api/approvals/:expenseId/decision (manager, admin, finance, director, cfo)
 
 ```json
 {
@@ -294,62 +265,39 @@ Rule options:
 }
 ```
 
-Notes:
+Decision rules:
 
-- Only the current sequence step can decide
-- Earlier steps must be completed first
-- Final expense status becomes `approved` or `rejected` based on rule engine outcome
-
-## Role Permissions (Current)
-
-- Admin:
-  - Create users
-  - Change roles
-  - Assign managers
-  - Configure approval rules
-  - View users
-- Employee:
-  - Submit expenses
-  - View own expenses
-- Manager/Finance/Director/CFO/Admin (Approver roles):
-  - View pending approvals
-  - Approve/reject assigned expenses
+- Only assigned approver can decide
+- Out-of-order decisions are blocked by sequence
+- Workflow state stays pending until all required steps/conditions pass
+- Workflow becomes rejected immediately on a rejecting decision in a step
 
 ## Default Seed Behavior
 
-On server startup:
+On startup:
 
-- Tables are created if missing
-- A default company/admin can be bootstrapped from env values
-- Default approval rule is upserted for seed company
+- Schema and tables are created if missing
+- Seed company and admin are ensured
+- Default step rule is upserted:
+  - Step 1 manager (all)
+  - Step 2 finance (all)
+  - Step 3 director (hybrid: 60 percent OR cfo)
 
-## Hackathon Commit Breakdown
+## Current Role Permissions
 
-Feature branch history was intentionally split into review-friendly commits:
+- Admin: company user management, role changes, manager assignment, rule configuration
+- Employee: submit expenses and view own expense list
+- Manager or Admin or Finance or Director or CFO: view pending approvals and decide
 
-1. `feat(core): add postgres schema and bootstrap initialization`
-2. `feat(auth): add company signup and admin user management`
-3. `feat(expense): add submission, OCR parsing, and FX normalization`
-4. `feat(approval): add rule-driven multi-step approval workflow`
-5. `feat(api): wire modular routes and global error handler`
+## Local Frontend Testing
 
-## Quick Demo Flow
+This repository currently tracks only backend and README.
 
-1. Company signup (creates admin)
-2. Admin login
-3. Admin creates manager + employee
-4. Admin assigns manager to employee
-5. Admin configures approval rule
-6. Employee submits expense
-7. Manager checks pending approvals
-8. Manager approves/rejects expense
+If you run a separate local frontend, keep its origin aligned with FRONTEND_ORIGIN in backend environment.
 
-## Future Enhancements
+## Known Not-Yet-Implemented Items
 
-- Google OAuth integration
-- Real OCR provider integration
-- SLA escalations and reminders
-- Notification module (email/WhatsApp/Slack)
-- Expense attachments storage
-- Better duplicate/fraud detection signals
-- Company-wide expense analytics and exports
+- OAuth provider login flow
+- Production OCR provider integration
+- Notification module
+- Advanced dashboards and reporting
