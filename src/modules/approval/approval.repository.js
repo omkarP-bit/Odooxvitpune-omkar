@@ -9,14 +9,20 @@ const findByExpense = (expenseId) =>
     include: { approver: true },
   });
 
-const findPendingByApprover = (approverId, page, limit) =>
-  prisma.approval.findMany({
-    where: { approverId: BigInt(approverId), status: 'PENDING' },
-    include: { expense: true },
-    skip: (page - 1) * limit,
-    take: limit,
-    orderBy: { createdAt: 'asc' },
-  });
+const findPendingByApprover = async (approverId, page, limit) => {
+  const where = { approverId: BigInt(approverId), status: 'PENDING' };
+  const [approvals, total] = await Promise.all([
+    prisma.approval.findMany({
+      where,
+      include: { expense: { include: { user: true } } },
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: { createdAt: 'asc' },
+    }),
+    prisma.approval.count({ where }),
+  ]);
+  return { approvals, total };
+};
 
 const findByPublicId = (publicId) =>
   prisma.approval.findUnique({

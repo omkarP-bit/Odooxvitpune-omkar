@@ -8,7 +8,12 @@ const errorHandler = (err, req, res, next) => {
   const code = err.code || 'INTERNAL_ERROR';
   const message = statusCode === 500 ? 'Internal server error' : err.message;
 
-  res.status(statusCode).json({ success: false, error: { code, message } });
+  res.setHeader('Content-Type', 'application/json');
+  res.status(statusCode).end(
+    JSON.stringify({ success: false, error: { code, message } }, (_, v) =>
+      typeof v === 'bigint' ? v.toString() : v
+    )
+  );
 };
 
 module.exports = errorHandler;

@@ -42,15 +42,16 @@ enum SlaAction {
 }
 
 model User {
-  id        BigInt   @id @default(autoincrement())
-  publicId  String   @unique @default(uuid()) @map("public_id")
-  email     String   @unique
-  name      String
-  role      Role     @default(EMPLOYEE)
-  companyId String   @map("company_id")
-  managerId BigInt?  @map("manager_id")
-  currency  String   @default("USD") @map("currency")
-  createdAt DateTime @default(now()) @map("created_at")
+  id          BigInt   @id @default(autoincrement())
+  publicId    String   @unique @default(uuid()) @map("public_id")
+  email       String   @unique
+  name        String
+  role        Role     @default(EMPLOYEE)
+  companyId   String   @map("company_id")
+  companyName String?  @map("company_name")
+  managerId   BigInt?  @map("manager_id")
+  currency    String   @default("USD") @map("currency")
+  createdAt   DateTime @default(now()) @map("created_at")
 
   manager   User?    @relation("ManagerEmployee", fields: [managerId], references: [id])
   reports   User[]   @relation("ManagerEmployee")

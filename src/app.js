@@ -21,15 +21,34 @@ const app = express();
 
 // Security & parsing
 app.use(helmet());
-app.use(cors());
+app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3001', credentials: true }));
 app.use(express.json());
 app.use(passport.initialize());
 
 // Rate limiting
-app.use(
-  '/api',
-  rateLimit({ windowMs: 15 * 60 * 1000, max: 200, standardHeaders: true, legacyHeaders: false })
-);
+const isDev = process.env.NODE_ENV !== 'production';
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isDev ? 2000 : 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) =>
+    res.status(429).json({ success: false, error: { code: 'RATE_LIMITED', message: 'Too many requests, please try again later.' } }),
+});
+
+// Stricter limiter for auth endpoints only (production)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isDev ? 5000 : 50,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) =>
+    res.status(429).json({ success: false, error: { code: 'RATE_LIMITED', message: 'Too many auth attempts, please try again later.' } }),
+});
+
+app.use('/api', limiter);
+app.use('/api/auth', authLimiter);
 
 // Routes
 app.use('/api/auth', authRoutes);

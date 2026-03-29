@@ -16,5 +16,6 @@ router.get('/failure', (req, res) =>
 );
 
 router.get('/me', authenticate, authController.getMe);
+router.post('/setup-company', authenticate, authController.setupCompany);
 
 module.exports = router;

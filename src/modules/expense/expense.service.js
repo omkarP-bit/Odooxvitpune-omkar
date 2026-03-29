@@ -52,7 +52,7 @@ const getExpenses = async (query, user) => {
     expenseRepo.countAll({ userId: user.id, role: user.role, companyId: user.companyId, status }),
   ]);
 
-  return { expenses, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
+  return { expenses, total, page, limit };
 };
 
 module.exports = { createExpense, getExpenses };
