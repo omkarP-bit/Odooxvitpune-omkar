@@ -67,10 +67,28 @@ const initializeDatabase = async () => {
 
     await upsertRule({
         companyId: company.id,
-        isManagerApprover: true,
-        additionalApproverRoles: ["finance", "director"],
-        percentageThreshold: 60,
-        specificApproverRole: "cfo"
+        steps: [
+            {
+                sequenceNo: 1,
+                roleSlots: ["manager"],
+                conditionType: "all",
+                slaHours: 24
+            },
+            {
+                sequenceNo: 2,
+                roleSlots: ["finance"],
+                conditionType: "all",
+                slaHours: 24
+            },
+            {
+                sequenceNo: 3,
+                roleSlots: ["director"],
+                conditionType: "hybrid",
+                percentageThreshold: 60,
+                specificApproverRole: "cfo",
+                slaHours: 24
+            }
+        ]
     });
 };
 

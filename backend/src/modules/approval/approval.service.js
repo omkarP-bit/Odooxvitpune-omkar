@@ -21,18 +21,134 @@ const {
 const { evaluateApprovalOutcome } = require("./rule.engine");
 const { computeDueAt } = require("./sla.engine");
 
+const LEGACY_DEFAULT_CONDITION = "all";
+
+const normalizeStep = (step, fallbackSequence) => {
+    const roleSlots = Array.isArray(step?.roleSlots)
+        ? step.roleSlots.map((role) => String(role).toLowerCase())
+        : [];
+
+    return {
+        sequenceNo: Number(step?.sequenceNo || fallbackSequence),
+        roleSlots,
+        conditionType: String(step?.conditionType || LEGACY_DEFAULT_CONDITION).toLowerCase(),
+        percentageThreshold: step?.percentageThreshold || null,
+        specificApproverRole: step?.specificApproverRole
+            ? String(step.specificApproverRole).toLowerCase()
+            : null,
+        slaHours: Number(step?.slaHours || 24)
+    };
+};
+
+const normalizeRulePayload = (payload) => {
+    if (Array.isArray(payload?.steps) && payload.steps.length > 0) {
+        return payload.steps.map((step, index) => normalizeStep(step, index + 1));
+    }
+
+    const steps = [];
+    let sequenceNo = 1;
+
+    if (payload?.isManagerApprover !== false) {
+        steps.push(
+            normalizeStep(
+                {
+                    sequenceNo,
+                    roleSlots: ["manager"],
+                    conditionType: LEGACY_DEFAULT_CONDITION,
+                    slaHours: 24
+                },
+                sequenceNo
+            )
+        );
+        sequenceNo += 1;
+    }
+
+    const additionalRoles = Array.isArray(payload?.additionalApproverRoles)
+        ? payload.additionalApproverRoles
+        : [];
+
+    additionalRoles.forEach((role) => {
+        steps.push(
+            normalizeStep(
+                {
+                    sequenceNo,
+                    roleSlots: [String(role).toLowerCase()],
+                    conditionType: LEGACY_DEFAULT_CONDITION,
+                    slaHours: 24
+                },
+                sequenceNo
+            )
+        );
+        sequenceNo += 1;
+    });
+
+    if (steps.length === 0) {
+        steps.push(
+            normalizeStep(
+                {
+                    sequenceNo: 1,
+                    roleSlots: ["admin"],
+                    conditionType: LEGACY_DEFAULT_CONDITION,
+                    slaHours: 24
+                },
+                1
+            )
+        );
+    }
+
+    const lastStep = steps[steps.length - 1];
+    const hasThreshold = Number(payload?.percentageThreshold || 0) > 0;
+    const hasSpecific = Boolean(payload?.specificApproverRole);
+
+    if (hasThreshold && hasSpecific) {
+        lastStep.conditionType = "hybrid";
+        lastStep.percentageThreshold = Number(payload.percentageThreshold);
+        lastStep.specificApproverRole = String(payload.specificApproverRole).toLowerCase();
+    } else if (hasThreshold) {
+        lastStep.conditionType = "percentage";
+        lastStep.percentageThreshold = Number(payload.percentageThreshold);
+    } else if (hasSpecific) {
+        lastStep.conditionType = "specific";
+        lastStep.specificApproverRole = String(payload.specificApproverRole).toLowerCase();
+    }
+
+    return steps;
+};
+
 const getRuleConfig = async (companyId) => {
     const existing = await findRuleByCompanyId(companyId);
-    if (existing) {
+    if (existing && Array.isArray(existing.steps) && existing.steps.length > 0) {
         return existing;
     }
 
     return {
         company_id: companyId,
-        is_manager_approver: true,
-        additional_approver_roles: [],
-        percentage_threshold: null,
-        specific_approver_role: null
+        steps: [
+            {
+                sequenceNo: 1,
+                roleSlots: ["manager"],
+                conditionType: "all",
+                percentageThreshold: null,
+                specificApproverRole: null,
+                slaHours: 24
+            },
+            {
+                sequenceNo: 2,
+                roleSlots: ["finance"],
+                conditionType: "all",
+                percentageThreshold: null,
+                specificApproverRole: null,
+                slaHours: 24
+            },
+            {
+                sequenceNo: 3,
+                roleSlots: ["director"],
+                conditionType: "hybrid",
+                percentageThreshold: 60,
+                specificApproverRole: "cfo",
+                slaHours: 24
+            }
+        ]
     };
 };
 
@@ -42,12 +158,11 @@ const upsertApprovalRule = async ({ adminUserId, payload }) => {
         throw new Error("Only admins can configure approval rules");
     }
 
+    const steps = normalizeRulePayload(payload);
+
     const rule = await upsertRule({
         companyId: admin.company_id,
-        isManagerApprover: payload.isManagerApprover !== false,
-        additionalApproverRoles: payload.additionalApproverRoles || [],
-        percentageThreshold: payload.percentageThreshold || null,
-        specificApproverRole: payload.specificApproverRole || null
+        steps
     });
 
     return rule;
@@ -61,66 +176,66 @@ const buildApprovalStepsForExpense = async ({ expense, employee }) => {
     const rule = await getRuleConfig(employee.company_id);
 
     const steps = [];
-    let sequence = 1;
-    const seenApproverIds = new Set();
+    const configuredSteps = (rule.steps || []).slice().sort((a, b) => a.sequenceNo - b.sequenceNo);
 
-    if (rule.is_manager_approver && employee.manager_id) {
-        const manager = await findUserById(employee.manager_id);
-        if (manager && manager.company_id === employee.company_id) {
-            steps.push({
-                expenseId: expense.id,
-                approverId: manager.id,
-                approverRole: manager.role,
-                sequenceNo: sequence,
-                dueAt: computeDueAt({ createdAt: new Date(), hours: 24 })
-            });
-            seenApproverIds.add(manager.id);
-            sequence += 1;
-        }
-    }
+    for (const configuredStep of configuredSteps) {
+        const seenInStep = new Set();
 
-    const additionalRoles = Array.isArray(rule.additional_approver_roles)
-        ? rule.additional_approver_roles
-        : [];
+        for (const roleSlotRaw of configuredStep.roleSlots || []) {
+            const roleSlot = String(roleSlotRaw).toLowerCase();
 
-    if (additionalRoles.length > 0) {
-        const approvers = await listUsersByRoles({
-            companyId: employee.company_id,
-            roles: additionalRoles
-        });
+            if (roleSlot === "manager") {
+                if (!employee.manager_id) {
+                    continue;
+                }
 
-        approvers.forEach((approver) => {
-            if (seenApproverIds.has(approver.id)) {
-                return;
+                const manager = await findUserById(employee.manager_id);
+                if (!manager || manager.company_id !== employee.company_id || seenInStep.has(manager.id)) {
+                    continue;
+                }
+
+                steps.push({
+                    expenseId: expense.id,
+                    approverId: manager.id,
+                    approverRole: manager.role,
+                    sequenceNo: configuredStep.sequenceNo,
+                    dueAt: computeDueAt({ createdAt: new Date(), hours: configuredStep.slaHours || 24 })
+                });
+                seenInStep.add(manager.id);
+                continue;
             }
 
-            steps.push({
-                expenseId: expense.id,
-                approverId: approver.id,
-                approverRole: approver.role,
-                sequenceNo: sequence,
-                dueAt: computeDueAt({ createdAt: new Date(), hours: 24 })
+            const users = await listUsersByRoles({
+                companyId: employee.company_id,
+                roles: [roleSlot]
             });
-            seenApproverIds.add(approver.id);
-            sequence += 1;
-        });
+
+            users.forEach((user) => {
+                if (seenInStep.has(user.id)) {
+                    return;
+                }
+
+                steps.push({
+                    expenseId: expense.id,
+                    approverId: user.id,
+                    approverRole: user.role,
+                    sequenceNo: configuredStep.sequenceNo,
+                    dueAt: computeDueAt({ createdAt: new Date(), hours: configuredStep.slaHours || 24 })
+                });
+                seenInStep.add(user.id);
+            });
+        }
+
+        const hasApproverForStep = steps.some(
+            (step) => Number(step.sequenceNo) === Number(configuredStep.sequenceNo)
+        );
+        if (!hasApproverForStep) {
+            throw new Error(`No approver found for sequence step ${configuredStep.sequenceNo}`);
+        }
     }
 
     if (steps.length === 0) {
-        const admins = await listUsersByRoles({ companyId: employee.company_id, roles: ["admin"] });
-        const fallbackAdmin = admins[0];
-
-        if (!fallbackAdmin) {
-            throw new Error("No approver configured for this company");
-        }
-
-        steps.push({
-            expenseId: expense.id,
-            approverId: fallbackAdmin.id,
-            approverRole: fallbackAdmin.role,
-            sequenceNo: 1,
-            dueAt: computeDueAt({ createdAt: new Date(), hours: 24 })
-        });
+        throw new Error("No approver configured for this company");
     }
 
     await createApprovalSteps(steps);

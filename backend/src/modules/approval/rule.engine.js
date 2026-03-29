@@ -1,33 +1,63 @@
-const evaluateApprovalOutcome = ({ approvals, ruleConfig }) => {
-    const approved = approvals.filter((a) => a.decision === "approved");
-    const rejected = approvals.filter((a) => a.decision === "rejected");
-    const total = approvals.length;
+const evaluateStepOutcome = ({ stepApprovals, stepRule }) => {
+    if (!stepApprovals.length) {
+        return "pending";
+    }
+
+    const approved = stepApprovals.filter((item) => item.decision === "approved");
+    const rejected = stepApprovals.filter((item) => item.decision === "rejected");
+    const total = stepApprovals.length;
 
     if (rejected.length > 0) {
         return "rejected";
     }
 
-    const specificRole = ruleConfig?.specific_approver_role || null;
-    if (specificRole) {
-        const specificApproved = approved.some((a) => a.approver_role === specificRole);
-        if (specificApproved) {
-            return "approved";
-        }
+    const conditionType = String(stepRule?.conditionType || "all").toLowerCase();
+    const threshold = Number(stepRule?.percentageThreshold || 0);
+    const specificRole = stepRule?.specificApproverRole || null;
+    const approvedRatio = total > 0 ? (approved.length / total) * 100 : 0;
+    const specificApproved = specificRole
+        ? approved.some((item) => item.approver_role === specificRole)
+        : false;
+
+    if (conditionType === "all") {
+        return approved.length === total ? "approved" : "pending";
     }
 
-    const threshold = Number(ruleConfig?.percentage_threshold || 0);
-    if (threshold > 0 && total > 0) {
-        const ratio = (approved.length / total) * 100;
-        if (ratio >= threshold) {
-            return "approved";
-        }
+    if (conditionType === "percentage") {
+        return total > 0 && approvedRatio >= threshold ? "approved" : "pending";
     }
 
-    if (approved.length === total && total > 0) {
-        return "approved";
+    if (conditionType === "specific") {
+        return specificApproved ? "approved" : "pending";
     }
 
-    return "pending";
+    if (conditionType === "hybrid") {
+        const percentageHit = total > 0 && threshold > 0 && approvedRatio >= threshold;
+        return percentageHit || specificApproved ? "approved" : "pending";
+    }
+
+    return approved.length === total ? "approved" : "pending";
 };
 
-module.exports = { evaluateApprovalOutcome };
+const evaluateApprovalOutcome = ({ approvals, ruleConfig }) => {
+    const steps = Array.isArray(ruleConfig?.steps) ? ruleConfig.steps : [];
+
+    for (const step of steps) {
+        const stepApprovals = approvals.filter(
+            (item) => Number(item.sequence_no) === Number(step.sequenceNo)
+        );
+        const stepOutcome = evaluateStepOutcome({ stepApprovals, stepRule: step });
+
+        if (stepOutcome === "rejected") {
+            return "rejected";
+        }
+
+        if (stepOutcome === "pending") {
+            return "pending";
+        }
+    }
+
+    return steps.length > 0 ? "approved" : "pending";
+};
+
+module.exports = { evaluateStepOutcome, evaluateApprovalOutcome };

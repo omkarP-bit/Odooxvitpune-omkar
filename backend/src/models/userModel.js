@@ -19,6 +19,12 @@ const createUsersTable = async () => {
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS company_id BIGINT REFERENCES companies(id) ON DELETE CASCADE;`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS manager_id BIGINT REFERENCES users(id) ON DELETE SET NULL;`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20);`);
+        await pool.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;`);
+        await pool.query(`
+            ALTER TABLE users
+            ADD CONSTRAINT users_role_check
+            CHECK (role IN ('admin', 'manager', 'employee', 'finance', 'director', 'cfo'))
+        `);
 };
 
 const createUser = async ({ publicId, companyId, managerId = null, name, email, passwordHash, role }) => {

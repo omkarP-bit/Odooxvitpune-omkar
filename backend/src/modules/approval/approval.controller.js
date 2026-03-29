@@ -13,6 +13,10 @@ const configureRule = async (req, res, next) => {
             return res.status(403).json({ message: error.message });
         }
 
+        if (error.message.includes("No approver") || error.message.includes("step")) {
+            return res.status(400).json({ message: error.message });
+        }
+
         return next(error);
     }
 };
