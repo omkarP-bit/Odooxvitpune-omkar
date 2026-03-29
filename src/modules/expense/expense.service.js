@@ -3,7 +3,7 @@ const currencyService = require('../currency/currency.service');
 const approvalService = require('../approval/approval.service');
 const AppError = require('../../utils/AppError');
 
-const COMPANY_CURRENCY = process.env.DEFAULT_COMPANY_CURRENCY || 'USD';
+const COMPANY_CURRENCY = process.env.DEFAULT_COMPANY_CURRENCY || 'INR';
 
 const createExpense = async (dto, user) => {
   const { amount, currency, category, vendor, description, receiptUrl, expenseDate } = dto;
@@ -13,6 +13,7 @@ const createExpense = async (dto, user) => {
   if (duplicate) throw new AppError('Duplicate expense detected', 'DUPLICATE_EXPENSE', 409);
 
   // Currency conversion
+  // Always convert to INR (company currency)
   const { convertedAmount, exchangeRate } = await currencyService.convertCurrency(
     currency.toUpperCase(),
     COMPANY_CURRENCY,

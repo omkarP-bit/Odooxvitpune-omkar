@@ -1,4 +1,4 @@
-const DEFAULT_CURRENCY = 'USD';
+const DEFAULT_CURRENCY = 'INR';
 
 const getCurrencyByCountry = async (countryName) => {
   try {

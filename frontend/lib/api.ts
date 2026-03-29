@@ -59,6 +59,11 @@ export const api = {
   convertCurrency: (from: string, to: string, amount: number) =>
     req<ConvertResponse>(`/api/currency/convert?from=${from}&to=${to}&amount=${amount}`),
 
+  // Users (admin)
+  getUsers: () => req<AppUser[]>("/api/auth/users"),
+  updateUser: (id: string, body: { role?: string; managerId?: string | null }) =>
+    req<{ id: string; role: string }>(`/api/auth/users/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+
   // OCR
   processReceipt: (file: File) => {
     const fd = new FormData();
@@ -150,7 +155,17 @@ export interface OcrResponse {
   currency?: string;
 }
 
-export const CURRENCIES = ["USD","EUR","GBP","INR","JPY","CAD","AUD","SGD","AED","CHF"];
+export interface AppUser {
+  id: string;
+  publicId: string;
+  name: string;
+  email: string;
+  role: string;
+  managerId?: string | null;
+  managerName?: string | null;
+}
+
+export const CURRENCIES = ["INR","USD","EUR","GBP","JPY","CAD","AUD","SGD","AED","CHF"];
 export const CATEGORIES = [
   "Meals & Entertainment","Travel","Accommodation",
   "Software & Subscriptions","Office Supplies","Medical","Utilities","Miscellaneous",
@@ -159,8 +174,8 @@ export const CATEGORIES = [
 export function fmtDate(d: string) {
   return new Date(d).toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric" });
 }
-export function fmtMoney(n: number, currency = "USD") {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(n);
+export function fmtMoney(n: number, currency = "INR") {
+  return new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 2 }).format(n);
 }
 export function getInitials(name?: string) {
   if (!name) return "U";

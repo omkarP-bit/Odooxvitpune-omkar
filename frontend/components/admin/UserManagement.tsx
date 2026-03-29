@@ -1,9 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { getInitials } from "@/lib/api";
-
-interface AppUser { id: string; publicId: string; name: string; email: string; role: string; managerId?: string; }
+import { api, getInitials, AppUser } from "@/lib/api";
 
 const ROLES = ["EMPLOYEE", "MANAGER", "ADMIN"];
 
@@ -16,28 +14,41 @@ export default function UserManagement() {
   const [creating, setCreating] = useState(false);
   const [msg, setMsg]           = useState("");
 
-  const fetchUsers = () => {
+  const fetchUsers = async () => {
     setLoading(true);
-    import("@/lib/api").then(({ api }) =>
-      api.getExpenses({ limit: 100 })
-        .then((r) => {
-          const map = new Map<string, AppUser>();
-          r.expenses.forEach((e) => {
-            if (e.user) map.set(e.user.publicId, { id: e.user.publicId, publicId: e.user.publicId, name: e.user.name, email: e.user.email, role: "EMPLOYEE" });
-          });
-          if (me) map.set(me.id, { id: me.id, publicId: me.id, name: me.name, email: me.email, role: me.role });
-          setUsers(Array.from(map.values()));
-        })
-        .catch(() => {
-          if (me) setUsers([{ id: me.id, publicId: me.id, name: me.name, email: me.email, role: me.role }]);
-        })
-        .finally(() => setLoading(false))
-    );
+    try {
+      const data = await api.getUsers();
+      setUsers(data);
+    } catch {
+      if (me) setUsers([{ id: me.id, publicId: me.id, name: me.name, email: me.email, role: me.role, managerId: null }]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { fetchUsers(); }, []);
 
   const managers = users.filter((u) => u.role === "MANAGER" || u.role === "ADMIN");
+
+  const handleRoleChange = async (userId: string, newRole: string) => {
+    try {
+      await api.updateUser(userId, { role: newRole });
+      setUsers(prev => prev.map(u => u.publicId === userId ? { ...u, role: newRole } : u));
+      setMsg("");
+    } catch (e: any) {
+      setMsg(e.message || "Failed to update role");
+    }
+  };
+
+  const handleManagerChange = async (userId: string, newManagerId: string) => {
+    try {
+      await api.updateUser(userId, { managerId: newManagerId || null });
+      setUsers(prev => prev.map(u => u.publicId === userId ? { ...u, managerId: newManagerId || null } : u));
+      setMsg("");
+    } catch (e: any) {
+      setMsg(e.message || "Failed to update manager");
+    }
+  };
 
   const handleCreate = async () => {
     if (!form.name || !form.email) { setMsg("Name and email are required"); return; }
@@ -141,12 +152,22 @@ export default function UserManagement() {
                 </td>
                 <td style={{ color: "var(--text-muted)" }}>{u.email}</td>
                 <td>
-                  <select className="filter-select" value={u.role} onChange={() => {}} style={{ padding: "4px 8px", fontSize: "0.76rem" }}>
+                  <select
+                    className="filter-select"
+                    value={u.role}
+                    onChange={(e) => handleRoleChange(u.publicId, e.target.value)}
+                    style={{ padding: "4px 8px", fontSize: "0.76rem" }}
+                  >
                     {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                   </select>
                 </td>
                 <td>
-                  <select className="filter-select" value={u.managerId ?? ""} onChange={() => {}} style={{ padding: "4px 8px", fontSize: "0.76rem" }}>
+                  <select
+                    className="filter-select"
+                    value={u.managerId ?? ""}
+                    onChange={(e) => handleManagerChange(u.publicId, e.target.value)}
+                    style={{ padding: "4px 8px", fontSize: "0.76rem" }}
+                  >
                     <option value="">— None —</option>
                     {managers.filter((m) => m.publicId !== u.publicId).map((m) => <option key={m.publicId} value={m.publicId}>{m.name}</option>)}
                   </select>

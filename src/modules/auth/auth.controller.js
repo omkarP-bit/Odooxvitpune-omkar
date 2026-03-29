@@ -54,4 +54,40 @@ const setupCompany = async (req, res, next) => {
   }
 };
 
-module.exports = { googleCallback, getMe, setupCompany };
+const listUsers = async (req, res, next) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: { companyId: req.user.companyId },
+      select: { publicId: true, name: true, email: true, role: true, managerId: true, manager: { select: { publicId: true, name: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    success(res, users.map(u => ({
+      id: u.publicId, publicId: u.publicId, name: u.name, email: u.email, role: u.role,
+      managerId: u.manager?.publicId ?? null, managerName: u.manager?.name ?? null,
+    })));
+  } catch (err) { next(err); }
+};
+
+const updateUser = async (req, res, next) => {
+  try {
+    const { role, managerId } = req.body;
+    const target = await prisma.user.findUnique({ where: { publicId: req.params.id } });
+    if (!target || target.companyId !== req.user.companyId) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found' } });
+    }
+    const data = {};
+    if (role && ['ADMIN', 'MANAGER', 'EMPLOYEE'].includes(role)) data.role = role;
+    if (managerId !== undefined) {
+      if (managerId) {
+        const mgr = await prisma.user.findUnique({ where: { publicId: managerId } });
+        if (mgr) data.managerId = mgr.id;
+      } else {
+        data.managerId = null;
+      }
+    }
+    const updated = await prisma.user.update({ where: { id: target.id }, data });
+    success(res, { id: updated.publicId, role: updated.role });
+  } catch (err) { next(err); }
+};
+
+module.exports = { googleCallback, getMe, setupCompany, listUsers, updateUser };

@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from "react";
 import { api, CURRENCIES, CATEGORIES, CreateExpenseBody, ConvertResponse, slaRemaining } from "@/lib/api";
 
 const EMPTY: CreateExpenseBody = {
-  amount: 0, currency: "USD", category: "Meals & Entertainment",
+  amount: 0, currency: "INR", category: "Meals & Entertainment",
   vendor: "", description: "", receiptUrl: "",
   expenseDate: new Date().toISOString().split("T")[0],
 };
@@ -27,11 +27,11 @@ export default function SubmitExpense({ onNavigate }: { onNavigate: (t: string) 
 
   // Currency conversion preview
   useEffect(() => {
-    if (!form.amount || form.amount < 1 || form.currency === "USD") { setConversion(null); return; }
+    if (!form.amount || form.amount < 1 || form.currency === "INR") { setConversion(null); return; }
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       setConverting(true);
-      api.convertCurrency(form.currency, "USD", form.amount)
+      api.convertCurrency(form.currency, "INR", form.amount)
         .then(setConversion).catch(() => setConversion(null)).finally(() => setConverting(false));
     }, 600);
     return () => { if (timer.current) clearTimeout(timer.current); };
@@ -144,7 +144,7 @@ export default function SubmitExpense({ onNavigate }: { onNavigate: (t: string) 
           {(conversion || converting) && (
             <div className="callout info" style={{ marginBottom: "16px" }}>
               {converting ? "Converting…" : conversion
-                ? <>💱 ≈ <strong>USD {conversion.converted.toFixed(2)}</strong> (rate: {conversion.rate.toFixed(4)})</>
+                ? <>💱 ≈ <strong>₹{conversion.converted.toFixed(2)}</strong> (rate: {conversion.rate.toFixed(4)})</>
                 : null}
             </div>
           )}
@@ -179,7 +179,7 @@ export default function SubmitExpense({ onNavigate }: { onNavigate: (t: string) 
             </div>
             <div className="form-group">
               <label>Converted (Company Currency)</label>
-              <input readOnly value={form.currency === "USD" ? `$ ${form.amount || "0"}` : conversion ? `$ ${conversion.converted.toFixed(2)}` : "Auto-converted on submit"} style={{ background: "rgba(253,224,71,0.04)", color: "var(--cyber)", fontWeight: 700, cursor: "default" }} />
+              <input readOnly value={form.currency === "INR" ? `₹ ${form.amount || "0"}` : conversion ? `₹ ${conversion.converted.toFixed(2)}` : "Auto-converted on submit"} style={{ background: "rgba(253,224,71,0.04)", color: "var(--cyber)", fontWeight: 700, cursor: "default" }} />
             </div>
             <div className="form-group full-width">
               <label>Remarks for approver</label>

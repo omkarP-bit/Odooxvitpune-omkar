@@ -30,7 +30,7 @@ const isDev = process.env.NODE_ENV !== 'production';
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: isDev ? 2000 : 300,
+  max: isDev ? 10000 : 300,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) =>
@@ -40,7 +40,7 @@ const limiter = rateLimit({
 // Stricter limiter for auth endpoints only (production)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: isDev ? 5000 : 50,
+  max: isDev ? 20000 : 50,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) =>
